@@ -25,11 +25,7 @@ A minimal, high‑performance drawing app focused on simplicity. Full‑screen b
 - `Clear` to remove all strokes
 - `Screenshot` to download a PNG
 
-## Deployment
 
-This repository includes a GitHub Actions workflow to publish GitHub Pages from `main`.
-- After pushing to `main`, Pages deploys automatically
-- The live site will be available at `https://garvitofficial.github.io/canvas/` once GitHub finishes the deployment
 
 ## License
 

@@ -53,6 +53,10 @@
       <path d="M9 6l2-2h4l2 2"/>
       <circle cx="12" cy="13" r="3"/>
     </symbol>
+    <symbol id="icon-prev" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+    <symbol id="icon-next" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="icon-add" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+    <symbol id="icon-pdf" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h6"/></symbol>
   </svg>
   <div class="toolbar">
     <button id="mode-pen" data-tool="pen" class="active" title="Pen"><svg class="icon"><use href="#icon-pen"/></svg></button>
@@ -61,7 +65,11 @@
     <input id="thickness" type="range" min="1" max="50" value="8" title="Pen Thickness">
     <button id="undo" title="Undo"><svg class="icon"><use href="#icon-undo"/></svg></button>
     <button id="clear" title="Remove All"><svg class="icon"><use href="#icon-clear"/></svg></button>
-    <button id="shot" title="Screenshot"><svg class="icon"><use href="#icon-shot"/></svg></button>
+    <button id="page-prev" title="Prev Page"><svg class="icon"><use href="#icon-prev"/></svg></button>
+    <span id="page-info" style="min-width:42px;text-align:center;color:#ccc;">1/1</span>
+    <button id="page-next" title="Next Page"><svg class="icon"><use href="#icon-next"/></svg></button>
+    <button id="page-add" title="Add Page"><svg class="icon"><use href="#icon-add"/></svg></button>
+    <button id="pdf" title="Export PDF"><svg class="icon"><use href="#icon-pdf"/></svg></button>
   </div>
   <canvas id="board"></canvas>
   <div id="cursor"></div>
@@ -74,15 +82,21 @@
     const thickInput = document.getElementById('thickness');
     const undoBtn = document.getElementById('undo');
     const clearBtn = document.getElementById('clear');
-    const shotBtn = document.getElementById('shot');
+    const prevBtn = document.getElementById('page-prev');
+    const nextBtn = document.getElementById('page-next');
+    const addBtn = document.getElementById('page-add');
+    const pageInfo = document.getElementById('page-info');
+    const pdfBtn = document.getElementById('pdf');
     const cursorEl = document.getElementById('cursor');
     const toolbar = document.querySelector('.toolbar');
 
     let dpr = window.devicePixelRatio || 1;
     let drawing = false;
     let mode = 'pen';
-    const strokes = [];
-    const history = [];
+    const pages = [{ strokes: [], history: [] }];
+    let currentPage = 0;
+    function cur() { return pages[currentPage]; }
+    function updatePageInfo() { pageInfo.textContent = (currentPage + 1) + '/' + pages.length; }
     let last = null;
     let pressing = false;
     let moved = false;
@@ -144,8 +158,9 @@
     }
 
     function findStrokeAtPoint(p) {
-      for (let si = strokes.length - 1; si >= 0; si--) {
-        const s = strokes[si];
+      const S = cur().strokes;
+      for (let si = S.length - 1; si >= 0; si--) {
+        const s = S[si];
         for (let i = 1; i < s.points.length; i++) {
           const a = s.points[i - 1];
           const b = s.points[i];
@@ -217,8 +232,8 @@
             eraserEngaged = true; eraserBtn.classList.toggle('engaged', true); setCursor(p, true);
             const idx = findStrokeAtPoint(p);
             if (idx !== null) {
-              const removed = strokes.splice(idx, 1)[0];
-              history.push({ type: 'remove', stroke: removed, index: idx });
+              const removed = cur().strokes.splice(idx, 1)[0];
+              cur().history.push({ type: 'remove', stroke: removed, index: idx });
               redraw();
             }
           }
@@ -237,8 +252,8 @@
         pmid: p,
         wema: baseSize
       };
-      strokes.push(stroke);
-      history.push({ type: 'add', stroke, index: strokes.length - 1 });
+      cur().strokes.push(stroke);
+      cur().history.push({ type: 'add', stroke, index: cur().strokes.length - 1 });
     }
 
     function move(e) {
@@ -250,14 +265,14 @@
         if (!eraserEngaged) return;
         const idx = findStrokeAtPoint(p);
         if (idx !== null) {
-          const removed = strokes.splice(idx, 1)[0];
-          history.push({ type: 'remove', stroke: removed, index: idx });
+          const removed = cur().strokes.splice(idx, 1)[0];
+          cur().history.push({ type: 'remove', stroke: removed, index: idx });
           redraw();
         }
         return;
       }
       if (!drawing) return;
-      const s = strokes[strokes.length - 1];
+      const s = cur().strokes[cur().strokes.length - 1];
       const lp = s.points[s.points.length - 1];
       const q = s.lastSmooth ? { x: s.lastSmooth.x + smoothAlpha * (p.x - s.lastSmooth.x), y: s.lastSmooth.y + smoothAlpha * (p.y - s.lastSmooth.y) } : p;
       s.lastSmooth = q;
@@ -286,8 +301,8 @@
         if (pressing && !eraserEngaged && dur < tapTime && (!startPos || Math.hypot((last||startPos).x - startPos.x, (last||startPos).y - startPos.y) < moveThresh)) {
           const idx = findStrokeAtPoint(startPos);
           if (idx !== null) {
-            const removed = strokes.splice(idx, 1)[0];
-            history.push({ type: 'remove', stroke: removed, index: idx });
+            const removed = cur().strokes.splice(idx, 1)[0];
+            cur().history.push({ type: 'remove', stroke: removed, index: idx });
             redraw();
           }
         }
@@ -302,39 +317,73 @@
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, w, h);
-      for (const s of strokes) { renderStroke(s); }
+      for (const s of cur().strokes) { renderStroke(s); }
     }
 
     function undo() {
-      if (!history.length) return;
-      const action = history.pop();
+      const H = cur().history;
+      if (!H.length) return;
+      const action = H.pop();
       if (action.type === 'add') {
-        const idx = strokes.indexOf(action.stroke);
-        if (idx >= 0) strokes.splice(idx, 1);
+        const idx = cur().strokes.indexOf(action.stroke);
+        if (idx >= 0) cur().strokes.splice(idx, 1);
         redraw();
       } else if (action.type === 'remove') {
-        strokes.splice(action.index, 0, action.stroke);
+        cur().strokes.splice(action.index, 0, action.stroke);
         redraw();
       }
     }
 
     function clearAll() {
-      strokes.length = 0;
+      cur().strokes.length = 0;
       redraw();
     }
 
-    function shot() {
-      const w = canvas.clientWidth; const h = canvas.clientHeight;
+    function renderPageToCanvas(page, width, height) {
       const off = document.createElement('canvas');
-      off.width = w; off.height = h;
+      off.width = width; off.height = height;
       const octx = off.getContext('2d');
       octx.fillStyle = '#000000';
-      octx.fillRect(0, 0, w, h);
-      octx.drawImage(canvas, 0, 0, w, h);
-      const url = off.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = url; a.download = 'canvas.png';
-      document.body.appendChild(a); a.click(); a.remove();
+      octx.fillRect(0, 0, width, height);
+      for (const s of page.strokes) {
+        const pts = s.points; const n = pts.length;
+        if (n < 2) continue;
+        octx.strokeStyle = s.color;
+        octx.lineWidth = s.widths && s.widths[0] ? s.widths[0] : s.size;
+        octx.beginPath(); octx.moveTo(pts[0].x, pts[0].y);
+        if (n === 2) { octx.lineTo(pts[1].x, pts[1].y); octx.stroke(); continue; }
+        for (let i = 0; i <= n - 3; i++) {
+          const p0 = i > 0 ? pts[i - 1] : pts[i];
+          const p1 = pts[i]; const p2 = pts[i + 1]; const p3 = i + 2 < n ? pts[i + 2] : pts[i + 1];
+          const { c1, c2 } = cubicControls(p0, p1, p2, p3);
+          octx.lineWidth = s.widths && s.widths[i + 1] ? s.widths[i + 1] : s.size;
+          octx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, p2.x, p2.y);
+        }
+        octx.stroke();
+      }
+      return off;
+    }
+    function exportPDF() {
+      const w = canvas.clientWidth; const h = canvas.clientHeight;
+      const urls = [];
+      for (const p of pages) {
+        const off = renderPageToCanvas(p, w, h);
+        urls.push(off.toDataURL('image/png'));
+      }
+      const bodyHtml = urls.map(function(u){ return '<div class="page"><img src="' + u + '"></div>'; }).join('');
+      const html = '<!doctype html><html><head><meta charset="utf-8"><style>' +
+        'html, body { margin:0; padding:0; }' +
+        '.page { page-break-after: always; }' +
+        'img { display:block; width:100%; height:auto; }' +
+        '</style></head><body>' + bodyHtml +
+        '</body></html>';
+      const win = window.open('about:blank');
+      if (win && win.document) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        setTimeout(function(){ try { win.focus(); win.print(); } catch(e){} }, 600);
+      }
     }
 
     canvas.addEventListener('mousedown', (e) => { e.preventDefault(); start(e); });
@@ -349,10 +398,15 @@
     eraserBtn.onclick = () => { mode = 'eraser'; eraserBtn.classList.add('active'); penBtn.classList.remove('active'); };
     undoBtn.onclick = undo;
     clearBtn.onclick = clearAll;
-    shotBtn.onclick = shot;
+    pdfBtn.onclick = exportPDF;
+    function goPrev() { if (currentPage > 0) { cancelInteraction(); currentPage--; updatePageInfo(); redraw(); } }
+    function goNext() { if (currentPage < pages.length - 1) { cancelInteraction(); currentPage++; updatePageInfo(); redraw(); } }
+    function addPage() { cancelInteraction(); pages.push({ strokes: [], history: [] }); currentPage = pages.length - 1; updatePageInfo(); redraw(); }
+    prevBtn.onclick = goPrev; nextBtn.onclick = goNext; addBtn.onclick = addPage;
 
     window.addEventListener('resize', resize);
     resize();
+    updatePageInfo();
 
     function cancelInteraction() {
       if (longTimer) { clearTimeout(longTimer); longTimer = null; }

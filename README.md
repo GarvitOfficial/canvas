@@ -14,6 +14,8 @@ Created to help myself sketch, plan, and think quickly on a clean canvas. With
 - Undo and clear
 - Screenshot export (PNG)
 - Mobile and desktop pointer support
+- Multiple pages with per‑page undo/history and clear
+- PDF export via browser print (multi‑page)
 
 ## Quick Start
 

@@ -331,10 +331,15 @@
       } else if (action.type === 'remove') {
         cur().strokes.splice(action.index, 0, action.stroke);
         redraw();
+      } else if (action.type === 'clear') {
+        cur().strokes = action.prev.slice();
+        redraw();
       }
     }
 
     function clearAll() {
+      const prev = cur().strokes.slice();
+      cur().history.push({ type: 'clear', prev });
       cur().strokes.length = 0;
       redraw();
     }
